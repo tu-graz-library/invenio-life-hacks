@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+#######
+# with this script it is possible to start the watching process of a
+# react module and the server with the webpack update process
+#######
+
+module=$1
+xx="xterm -fg white -bg black -geometry 211x41 -hold"
+base=${PWD}
+
+function startEnvironment() {
+  cd $base
+  $base/start
+}
+
+function startWatchingModule() {
+  if [ ! -d "$base/env/src/$module" ]
+  then
+    echo "this module $module is not installed for local development"
+    exit
+  fi
+
+  cmd=""
+  cmd+="cd $base/env/src/$module"
+  cmd+="&& npm run watch"
+
+  bash -c "$xx -title 'watch $module' -e '$cmd' &"
+}
+
+function main() {
+  startEnvironment
+  startWatchingModule
+}
+
+main

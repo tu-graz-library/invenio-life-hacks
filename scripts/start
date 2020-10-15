@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+#######
+# with this script it is possible to automatically start the server
+# and the webpack update process
+#######
+
+xx="xterm -fg white -bg black -geometry 211x41 -hold"
+base=`pwd`
+
+function startServer() {
+  cmd=""
+  cmd+="cd $base"
+  cmd+=" && source env/bin/activate"
+  cmd+=" && cd rdm"
+  cmd+=" && invenio-cli run"
+
+  bash -c "$xx -title 'server' -e '$cmd' &"
+}
+
+function startWebpack() {
+  cmd=""
+  cmd+="cd $base"
+  cmd+=" && source env/bin/activate"
+  cmd+=" && cd rdm"
+  cmd+=" && invenio webpack run start"
+
+  bash -c  "$xx -title 'webpack' -e '$cmd' &"
+}
+
+startServer
+startWebpack

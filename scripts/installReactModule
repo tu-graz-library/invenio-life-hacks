@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+#######
+# with this script it is possible to install and start watching a
+# react module
+#
+# it is necessary that nodejs is not installed with root or has a
+# global directory accessible by not root. the following configuration
+# variable would help for that:
+#
+#     export NPM_CONFIG_PREFIX=~/.npm/global
+#
+#######
+
+workingDir='env/src'
+module=$1
+base=${PWD}
+
+function cloneRepository() {
+  cd $workingDir
+
+  git clone git://github.com/inveniosoftware/$module.git
+}
+
+function buildModule() {
+  cd $workingDir
+  cd $module
+
+  npm install
+  npm run build
+}
+
+function linkModule() {
+  cd $workingDir
+  cd $module
+  npm run link-dist
+
+  cd "$base/env/var/instance/assets/node_modules/"
+  npm link $module
+}
+
+function startEnvironment() {
+  cd $base
+  $base/start
+}
+
+function startWatchingModule() {
+  cmd=""
+  cmd+="cd $base/env/src/$module"
+  cmd+="&& npm run watch"
+
+  bash -c "$xx -title 'watch $module' -e '$cmd' &"
+}
+
+function main() {
+  if [ ! -d ~/.npm/global ]
+  then
+    echo "not found user directory ~/.npm/global"
+    exit
+  fi
+
+  cloneRepository
+  buildModule
+  linkModule
+  startEnvironment
+  startWatchingModule
+}
+
+main
+
