@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+#######
+# clone all repositories from inveniosoftware organisation
+#######
+
+for page in {1..2}
+do
+  names=$(curl -s "https://api.github.com/organizations/1157480/repos?per_page=100&page=$page" | grep full_name | cut -d ':' -f 2 | sed -e 's/ "//' -e 's/",//')
+
+  for name in $names
+  do
+    if [ "${name#*/}" == "coordination" ]
+    then
+      _= # only for something be here
+      # do nothing, coordination is a archived but not moved repository
+    elif [ -d ${name#*/} ]
+    then
+      cd ${name#*/}
+
+      git fetch -q
+      to_update=$(git status -uno | grep 'Your branch is up to date' -c)
+
+      if [[ "$to_update" != 1 ]]
+      then
+        echo ${name#*/}
+        git pull -q
+
+        # firefox-bin https://github.com/$name
+      fi
+
+      cd ..
+    else
+      echo ${name#*/}
+      git clone -q git://github.com/$name
+    fi
+  done
+done
