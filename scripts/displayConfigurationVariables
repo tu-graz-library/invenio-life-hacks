@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+#######
+# show all configuration variables from config.py file in a sorted by variables way
+#
+# NOTE:
+#   this script has to be in the directory where the local cloned
+#   inveniosoftware repositories are
+#######
+
+find -not -path '*training*' -name config.py |
+  xargs grep -P --color "([A-Z]+_)+[A-Z]+ =" |
+  sed -E -e 's/.*\/(.+?)\/.*?config.py:(.*)/\2|\1/' -e 's/^[ \t]*//;s/[ \t]*$//' |
+  sort |
+  awk -F '|' '{print $2 "|" $1}' | column -t -s '|'

@@ -1,0 +1,91 @@
+# Copyright (C) 2021 Graz University of Technology.
+
+# Search strings in files like
+# fxgrep py RecordService
+#
+# find RecordService in *.py python files and exclude all files comming from
+# directories which include invenio-rdm-records or test
+#   fxgrep py RecordService invenio-rdm-records test
+#
+# find RecordService in *.py files where RecordService prefix and suffix is not
+# a character
+# fxgrep py '[^a-z]RecordService[^a-z]'
+#
+# default is to search case insensitive, but sometimes it is easier to search
+# case sensitive. the search string has to be prefixed with "i:"
+# fxgrep py i:Owner
+function fxgrep() {
+  xagr="xargs grep -n -P --color"
+  notpaths=()
+  space=$1
+  pattern=$2
+
+  if [[ ${pattern:0:2} == "i:" ]]
+  then
+    pattern=${pattern:2}
+  else
+    xagr+=" -i"
+  fi
+
+  for (( i=3; i <= $#; i++ ))
+  do
+    notpaths+=( -not -path "*${!i}*")
+  done
+
+  if [[ ${space} == "c++" ]]
+  then
+    file_extensions=".*\.(cpp|hpp|cc|c|h)"
+  elif [[ ${space} == "html" ]]
+  then
+    file_extensions=".*\.(html|less|css)"
+  elif [[ ${space} == "js" ]]
+  then
+    file_extensions=".*\.(js|jsx|svelte|ts|vue)"
+    notpaths+=( -not -path "*build*" )
+    notpaths+=( -not -path "*node_modules*" )
+  elif [[ ${space} == "php" ]]
+  then
+    file_extensions=".*\.(php|tpl)"
+  elif [[ ${space} == "xml" ]]
+  then
+    file_extensions=".*\.(xml|xsl)"
+  elif [[ ${space} == "tex" ]]
+  then
+    file_extensions=".*\.tex"
+  elif [[ ${space} == "py" ]]
+  then
+    file_extensions=".*\.py"
+  else
+    file_extensions=".*${space}"
+  fi
+
+  find -type f -regextype posix-egrep -regex ${file_extensions} "${notpaths[@]}" | sed 's/ /\\ /g' | $xagr ${pattern}
+}
+
+
+# show the name of the current git branch
+function gitBranch() {
+  git branch 2> /dev/null | sed -r -e '/^[^*]/d' -e 's/\* (.+)$/(\1) /'
+}
+
+# see if there is a open ssh session. the possible name of the session could be
+# detected also in the sed command like 's/^(ssh).*(Max|Moritz).*/(\1@\2) /'. it
+# would be clearer which session is open
+function isSSHActive() {
+  ssh-add -L 2> /dev/null | sed -r -e 's/^(ssh).*/(\1) /'
+}
+
+# the bash prompt could be overriden. to use it like that put the "bash_prompt"
+# command into the .bashrc file
+function bash_prompt() {
+  local none="\[\e[00m\]"
+
+  local red="\[\e[31m\]"
+  local green="\[\e[32m\]"
+  local boldBlue="\[\e[01;34m\]"
+  local white="\[\e[37m\]"
+
+  export PS1="${white}\u ${green}\$(isSSHActive)${boldBlue}\W ${red}\$(gitBranch)${none}\$${none} "
+}
+
+

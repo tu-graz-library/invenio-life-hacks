@@ -1,0 +1,226 @@
+# Copyright (C) 2021 Graz University of Technology.
+
+export PIPENV_VERBOSITY=-1
+export FLASK_ENV=development
+export NPM_CONFIG_PREFIX=~/.npm/global
+
+export PATH_TO_LOCAL_GITHUB_CODE=
+export GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE=
+
+# the directory structure that this would work is to have something like
+# opensource
+#   github
+#     inveniosoftware
+#     tu-graz-library
+#     PERSONAL
+# test
+#   repos
+#     v3
+#       repo
+#       env-dev-invenio-theme-tugraz
+#     v4
+#       repo
+#       env-dev-invenio-theme-tugraz
+
+
+# example venv
+# example venv env
+# example venv env:dev:invenio-theme-tugraz
+# example venv env:test:invenio-records-marc21:utnapischtim
+function venv() {
+  sshStatus=$(isSSHActive)
+  in=${1:-env}
+  arrIn=(${in//:/ })
+
+  env=${in//:/-}
+  state=${arrIn[1]}
+  module=${arrIn[2]}
+  organisation=${arrIn[3]:-tu-graz-library}
+  repo="repo"
+
+  if [[ -d ${env} ]]
+  then
+    echo "the environment with this name does already exists"
+    return
+  fi
+
+  if [[ ! -d ${repo} && ! ${sshStatus} ]]
+  then
+    echo "to install the repository base from gitlab it is necessary to have a running ssh session"
+    echo "start a ssh session with"
+    echo "    eval ssh-agent bash"
+    echo "    ssh-add PATH_TO_SSH_KEY"
+    echo "then rerun this command"
+    return
+  fi
+
+  createEnvironment ${env}
+  activate ${env}
+
+  installNecessaryPythonPackages
+
+  if [[ ! -d ${repo} && ${sshStatus} ]]
+  then
+    installRepo ${repo}
+    echo "installed repository"
+  fi
+
+  if [[ ${state} == "test" ]]
+  then
+    setUpInvenioTestEnv ${module} ${organisation} ${repo}
+  fi
+
+  if [[ ${state} == "dev" ]]
+  then
+    setUpInvenioDevEnv ${module} ${organisation} ${repo}
+  fi
+}
+
+function createEnvironment() {
+  env=${1}
+
+  python3.8 -m venv ${env}  > /dev/null
+}
+
+function installNecessaryPythonPackages() {
+  pip install --upgrade pip > /dev/null
+  echo "upgraded pip"
+
+  pip install invenio-cli > /dev/null
+  echo "installed invenio-cli"
+
+  pip install Flask-DebugToolbar > /dev/null
+  echo "installed flask-debugtoolbar"
+
+  pip install wheel > /dev/null
+  echo "installed wheel"
+}
+
+function installRepo() {
+  repo=${1}
+
+  if [[ ${GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE} ]]
+  then
+    git clone ${GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE} ${repo} &> /dev/null
+
+    echo "
+      [cli]
+      project_dir = $(pwd)/${repo}
+      instance_path =
+      services_setup = False" > ${repo}/.invenio.private
+  else
+    # TODO:
+    # it would be nice to have the <<EOF part in a variable, but i didn't manage
+    # to store it in a variable the way that i could use it here as i do it now
+    invenio-cli init <<EOF
+yes
+${repo}
+${repo}
+${repo}.org
+${repo}/${repo}
+${repo} instance
+INSTITUTIONAL
+${repo}@${repo}.com
+2021
+1
+1
+1
+1
+EOF
+  fi
+}
+
+function checkPrerequisitesToInstallLocalPackage() {
+  module=${1}
+  repo=${2}
+  pathToModule=${3}
+
+  if [[ ! ${module} ]]
+  then
+    echo "module has to be set"
+    return
+  fi
+
+  cd $repo
+
+  if [[ ! -d ${pathToModule} ]]
+  then
+    echo "module is not local accessible $pathToModule"
+    return
+  fi
+}
+
+function setUpInvenioTestEnv() {
+  module=${1}
+  organisation=${2}
+  repo=${3}
+  pathToModule="${PATH_TO_LOCAL_GITHUB_CODE}/github/${organisation}/${module}"
+
+  checkPrerequisitesToInstallLocalPackage ${module} ${repo} ${pathToModule}
+  invenio-cli packages install "${pathToModule}[tests]"
+}
+
+function setUpInvenioDevEnv() {
+  module=${1}
+  organisation=${2}
+  repo=${3}
+  pathToModule="${PATH_TO_LOCAL_GITHUB_CODE}/github/${organisation}/${module}"
+
+  checkPrerequisitesToInstallLocalPackage ${module} ${repo} ${pathToModule}
+
+  if [[ ! -f "Pipfile.lock" ]]
+  then
+    invenio-cli packages lock --dev --pre
+  fi
+
+  invenio-cli install --pre --development
+
+  invenio-cli packages install ${pathToModule}
+
+}
+
+function activate() {
+  base=${PWD}
+  target=${1:-env}
+
+  if [[ ${VIRTUAL_ENV} ]]
+  then
+    echo "VIRTUAL_ENV has the following $VIRTUAL_ENV value. It could be possible that another virtualenv is not deactivated beforehand"
+    return
+  fi
+
+  if [ -d ${target} ]
+  then
+    source ${target}/bin/activate
+  elif [[ ${PWD} =~ ${target} ]]
+  then
+    while [[ ! -d ${target} ]]
+    do
+      cd ..
+    done
+
+    source ${target}/bin/activate
+    cd ${base}
+  else
+    echo "wrong directory, no env directory and no env in the parent directories"
+  fi
+}
+
+function run() {
+  base=${PWD}
+  target=${1:-env}
+  repo="repo"
+
+  activate ${target}
+
+  if [[ -d ${repo} ]]
+  then
+    cd ${repo}
+    invenio-cli run
+  elif [[ ${PWD##*/} == "repo" ]]
+  then
+    invenio-cli run
+  else
+    echo "wrong directory"
+  fi
+}
