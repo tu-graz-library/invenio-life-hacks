@@ -1,0 +1,42 @@
+{
+  "[python]": {
+    
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true
+    },
+    "editor.formatOnSave": true,
+  },
+  "python.formatting.provider": "black",
+
+  "python.linter": "pyLint",
+  "python.linting.enabled": true,
+  "python.linting.ignorePatterns": [
+    ".vscode/*.py",
+    "venv/**",
+    "tests/**",
+  ],
+  "python.linting.pycodestyleEnabled": true,
+
+  "pytest.command": "python -m pytest",
+  "python.testing.cwd": "./",
+  "python.testing.pytestEnabled": true,
+  "python.testing.autoTestDiscoverOnSaveEnabled": true,
+  "python.testing.pytestPath": "tests",
+  "python.testing.pytestArgs": [
+    "--isort",
+    "--pydocstyle",
+    "--pycodestyle",
+    "--no-cov",
+  ],
+  "python.pythonPath": "venv/bin/python",
+
+  "[json]": {
+      "editor.formatOnSave": true,
+      "files.insertFinalNewline": true,
+      "editor.quickSuggestions": {
+          "strings": true
+      },
+      "editor.suggest.insertMode": "replace"
+  },
+  "json.format.enable": true
+}
