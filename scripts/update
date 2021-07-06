@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+
+# with this function it is possible to clone and pull all repositories from the
+# inveniosoftware organisation. the local repositories are easier to search (as
+# an example with the fxgrep command)
+function update() {
+  for page in {1..2}
+  do
+    names=$(collectNames ${page})
+
+    for name in $names
+    do
+      if [ -d ${name#*/} ]
+      then
+        updateRepository ${name}
+      else
+        cloneRepository ${name}
+      fi
+    done
+  done
+}
+
+function collectNames() {
+  page=$1
+  curl -s "https://api.github.com/organizations/1157480/repos?per_page=100&page=${page}" |
+    grep full_name |
+    cut -d ':' -f 2 |
+    sed -e 's/ "//' -e 's/",//'
+}
+
+function cloneRepository() {
+  name=${1}
+  echo "clone repository: ${name#*/}"
+  git clone -q git://github.com/${name}
+}
+
+function updateRepository() {
+  name=${1}
+  cd ${name#*/}
+
+  git fetch -q
+  to_update=$(git status -uno | grep 'Your branch is up to date' -c)
+
+  if [[ $to_update != 1 ]]
+  then
+    echo "update repository ${name#*/}"
+    git pull -q
+
+    # firefox-bin https://github.com/$name
+  fi
+
+  cd ..
+}
+
+update
