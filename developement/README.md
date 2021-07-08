@@ -58,6 +58,23 @@ Develop a new invenio module or work on an existing module with VS Code; many se
 In the project directory must be created a folder with the name ```.vscode``` within three files can be placed to configure VS Code:
 ```launch.json```, ```settings.json``` and ```tasks.json```.
 
+## Project sturcture
+
+  ```
+  my-invenio-project
+    .vscode/                     <-- configuration files for vscode
+      launch.json
+      tasks.json
+      settings.json
+    repo/                        <-- invenio repository directory
+      app_data/
+      assets/                    
+      docker/
+      static/
+      templates/
+    venv/                        <-- python virtual enviroment
+  ```
+
 The ```launch.json``` configuration file is used to configure the debugger for running the test-set of the project or configure the debugger for your invenio instance, as shown in the previous section. For more information, read this articles [Configuration](https://go.microsoft.com/fwlink/?linkid=830387) and [Debugging](https://code.visualstudio.com/docs/python/debugging).
 
 
