@@ -157,7 +157,7 @@ function setUpInvenioTestEnv() {
   pathToModule="${PATH_TO_LOCAL_GITHUB_CODE}/github/${organisation}/${module}"
 
   checkPrerequisitesToInstallLocalPackage ${module} ${repo} ${pathToModule}
-  invenio-cli packages install "${pathToModule}[tests]"
+  pip install -e "${pathToModule}[all,postgresql,elasticsearch7]"
 }
 
 function setUpInvenioDevEnv() {
