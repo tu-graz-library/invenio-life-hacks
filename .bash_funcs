@@ -15,10 +15,17 @@
 # case sensitive. the search string has to be prefixed with "i:"
 # fxgrep py i:Owner
 function fxgrep() {
-  xagr="xargs grep -n -P --color"
+  xagr="xargs grep -n -P --color=always"
   notpaths=()
   space=$1
   pattern=$2
+  interactive=false
+
+  if [[ ${space:0:2} == "i:" ]]
+  then
+    space=${space:2}
+    interactive=true
+  fi
 
   if [[ ${pattern:0:2} == "i:" ]]
   then
@@ -59,7 +66,31 @@ function fxgrep() {
     file_extensions=".*${space}"
   fi
 
-  find -type f -regextype posix-egrep -regex ${file_extensions} "${notpaths[@]}" | sed 's/ /\\ /g' | $xagr ${pattern}
+  output=$(find -type f -regextype posix-egrep -regex ${file_extensions} "${notpaths[@]}" | sed 's/ /\\ /g' | $xagr ${pattern})
+  readarray -t files <<< $output
+
+  if $interactive
+  then
+    size=${#files[@]}
+    base=$(pwd)
+    prompt="Enter line number to open file: "
+
+    for i in "${!files[@]}";
+    do
+      printf "%${#size}s: %s\n" "$i" "${files[$i]}"
+    done
+
+    while read -p "$prompt" file_number && [[ "$file_number" != "q" ]]
+    do
+      uncolored_line=$(echo ${files[$file_number]} | sed -E 's/\x1b\[[0-9;]*[mK]//g')
+      line_number=$(echo ${uncolored_line} | sed -E "s/.*?:([0-9]+):.*/\1/g")
+      filename=$(echo ${uncolored_line} | sed "s/\.${space}.*$/.${space}/g")
+
+      emacsclient -n --alternate-editor="" --no-wait --eval "(progn (find-file \"$base/${filename}\") (goto-line ${line_number}) (hl-line-mode t) (recenter))" > /dev/null 2>&1
+    done
+  else
+    printf "%s\n" "${files[@]}"
+  fi
 }
 
 
