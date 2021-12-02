@@ -1,42 +1,69 @@
 #!/usr/bin/env bash
 
+declare -A repositories
+
+
 # with this function it is possible to clone and pull all repositories from the
 # inveniosoftware organisation. the local repositories are easier to search (as
 # an example with the fxgrep command)
 function update() {
+  initRepositoryNamesLocally
+
   for page in {1..2}
   do
-    names=$(collectNames ${page})
+    repos=$(reposRemote ${page})
 
-    for name in $names
+    while read obj
     do
-      if [ -d ${name#*/} ]
+      name=$(jq -r '.name' <<< $obj)
+      archived=$(jq -r '.archived' <<< $obj)
+
+      if [[ $archived == "true" ]]
       then
-        updateRepository ${name}
+        archivedRepository $name
       else
-        cloneRepository ${name}
+        repositories[$name]=1
+
+        if [ -d ${name} ]
+        then
+          updateRepository ${name}
+        else
+          cloneRepository ${name}
+        fi
       fi
-    done
+    done < <(jq -c '.[]' <<< $repos)
+  done
+
+  for repositoryName in "${!repositories[@]}"
+  do
+    if [[ ${repositories[$repositoryName]} -eq 0 ]]
+    then
+      removeRepository $repositoryName
+    fi
   done
 }
 
-function collectNames() {
+function reposRemote() {
   page=$1
-  curl -s "https://api.github.com/organizations/1157480/repos?per_page=100&page=${page}" |
-    grep full_name |
-    cut -d ':' -f 2 |
-    sed -e 's/ "//' -e 's/",//'
+  curl -s "https://api.github.com/organizations/1157480/repos?per_page=100&page=${page}" | jq -r 'map({name: .name, archived: .archived})'
+}
+
+function initRepositoryNamesLocally() {
+  for repository in */
+  do
+    repositories[${repository%/}]=0
+  done
 }
 
 function cloneRepository() {
   name=${1}
-  echo "clone repository: ${name#*/}"
-  git clone -q git://github.com/${name}
+  echo "clone repository: ${name}"
+  git clone -q git://github.com/inveniosoftware/${name}
 }
 
 function updateRepository() {
   name=${1}
-  cd ${name#*/}
+  cd ${name}
 
   git fetch -q
   to_update=$(git status -uno | grep 'Your branch is up to date' -c)
@@ -45,11 +72,29 @@ function updateRepository() {
   then
     echo "update repository ${name#*/}"
     git pull -q
-
-    # firefox-bin https://github.com/$name
   fi
 
   cd ..
+}
+
+function removeRepository() {
+  name=${1}
+
+  if [[ -d $name ]]
+  then
+    echo "remove repository: ${name}"
+    rm -rf $name
+  fi
+}
+
+function archivedRepository() {
+  name=${1}
+
+  if [[ -d $name ]]
+  then
+    echo "archived repository ${name} removed"
+    rm -rf $name
+  fi
 }
 
 update
