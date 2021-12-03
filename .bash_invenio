@@ -182,6 +182,12 @@ function setUpInvenioDevEnv() {
 function activate() {
   base=${PWD}
   target=${1:-env}
+  pathVirtualEnvFile="/tmp/invenio_virtual_env.txt"
+
+  if [[ -f $pathVirtualEnvFile ]]
+  then
+    target=$(cat $pathVirtualEnvFile)
+  fi
 
   if [[ ${VIRTUAL_ENV} ]]
   then
@@ -192,6 +198,7 @@ function activate() {
   if [ -d ${target} ]
   then
     source ${target}/bin/activate
+    echo ${target} > $pathVirtualEnvFile
   elif [[ ${PWD} =~ ${target} ]]
   then
     while [[ ! -d ${target} ]]
@@ -200,6 +207,7 @@ function activate() {
     done
 
     source ${target}/bin/activate
+    echo ${target} > $pathVirtualEnvFile
     cd ${base}
   else
     echo "wrong directory, no env directory and no env in the parent directories"
