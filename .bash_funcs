@@ -30,6 +30,12 @@ function fxgrep() {
   if [[ ${pattern:0:2} == "i:" ]]
   then
     pattern=${pattern:2}
+  elif [[ ${pattern:0:2} == "d:" ]]
+  then
+    pattern="def\s${pattern:2}"
+  elif [[ ${pattern:0:2} == "v:" ]]
+  then
+    pattern="${pattern:2}\s="
   else
     xagr+=" -i"
   fi
