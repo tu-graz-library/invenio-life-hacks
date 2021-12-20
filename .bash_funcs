@@ -36,6 +36,9 @@ function fxgrep() {
   elif [[ ${pattern:0:2} == "v:" ]]
   then
     pattern="${pattern:2}\s="
+  elif [[ ${pattern:0:3} == "nc:" ]]
+  then
+    pattern="^(?=[\s]*+[^#])[^#]*(${pattern:0:3})"
   else
     xagr+=" -i"
   fi
