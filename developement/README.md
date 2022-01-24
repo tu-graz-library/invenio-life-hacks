@@ -80,7 +80,7 @@ The ```launch.json``` configuration file is used to configure the debugger for r
 
 The ```settings.json``` file is the easy way to configure VS Code for your purpose.
 
-In this file, the visual studio code can be customized and automated for each type of file.  Setup the action if a python file will be saved and organize with isort the imports in the python file and format the code with your specified code styler.
+In this file, the visual studio code can be customized and automated for each type of file. Setup the action if a python file will be saved and organize with isort the imports in the python file and format the code with your specified code styler.
 
 ```json
 "[python]": {
@@ -107,6 +107,26 @@ An example configuration can be found in the folder: [.vscode/](.vscode/)
 The Visual Studio Code supports the python unittest framework. The VS Code extension 
 ```hbenl.vscode-test-explorer``` is a useful extension to display and run unittest in the module. VS Code can be configured to run unittest by adding the line ```python.testing.pytestEnabled``` in the ```settings.json``` file.
 
+## Configuration
+
+Writing unit-test during development is a crucial thing. Vscode can sometimes be tricky to configure; an important step is to set up the environment. In order to use the debugger ``launch.json`` file must have a configuration section as follows: 
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug Unit Tests",
+            "type": "python",
+            "request": "launch",
+            "purpose": ["debug-test"],
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        }
+    ]
+}
+```
+Most of the time, you need to debug through the whole source code with the property ``"justMyCode": false`` debugpy works also in other libraries.
 
 ## Troubleshoot
 
