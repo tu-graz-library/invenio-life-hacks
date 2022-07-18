@@ -7,6 +7,8 @@ export NPM_CONFIG_PREFIX=~/.npm/global
 export PATH_TO_LOCAL_GITHUB_CODE=
 export GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE=
 
+export USER=
+
 # the directory structure that this would work is to have something like
 # opensource
 #   github
@@ -22,6 +24,143 @@ export GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE=
 #       repo
 #       env-dev-invenio-theme-tugraz
 
+
+
+function clone() {
+  # this function simplifies the local cloning of a inveniosoftware
+  # package over the own github account
+
+  repo=$1
+
+  if [[ -d "$repo" ]]
+  then
+    echo "repo already cloned"
+    return
+  fi
+
+  git clone git@github.com:$USER/$repo
+  cd $repo
+  git remote add upstream https://github.com/inveniosoftware/$repo
+  cd ..
+}
+
+
+function release() {
+  # this function simplifies the releasing process by providing last
+  # release tags, a prompt to choose the new tag, some checks that the
+  # format of the release tag is correct, further it adds the changes
+  # from the last tag to current to CHANGES.rst and last but not least
+  # it creates a release on github and so on pypi if the actions are
+  # set up correctly
+
+  if [[ ! -d .git ]]
+  then
+    echo "this is only possible in git directories"
+    return
+  fi
+
+  if [[ "$(isSSHActive)" == " " ]]
+  then
+    echo "no active ssh session"
+    return
+  fi
+
+  git remote update
+
+
+  # show last tag name
+  git tag | tail -n 10
+  latest_tag=$(git describe --abbrev=0 --tags)
+
+  # choose new tag name
+  while true
+  do
+    read -p "enter tag name: " tag_name
+
+    # check about tag name style
+    # TODO check about tag is semantically greater
+    if [[ "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$latest_tag" < "$tag_name" ]]
+    then
+      break
+    else
+      if [[ !  "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      then
+        echo "the style v[0-9]+\.[0-9]+\.[0-9] of $tag_name is  not correct please redo."
+      fi
+
+      if [[ "$tag_name" < "$latest_tag" ]]
+      then
+        echo "the tag has the right format, but it is lower then the latest existing tag"
+      fi
+    fi
+  done
+
+  # get changes from last tag until now
+  # https://gist.github.com/gzagatti/3bf037d397e6e47e47e81b7fc8293fd4
+  text=$(git log --pretty=format:%s $latest_tag..HEAD | # get logs from last tag
+           sed '/Merge/d' | # remove commit messages that indicate a merge commit
+           sed -n '$!N; /^\(.*\)\n\1$/!P; D' | # remove duplicate lines
+           sed 's/.*/- &/' # add prefix dash to indicate that the result is a list
+      )
+
+
+  current_date=$(printf '%(%Y-%m-%d)T\n' -1)
+
+  # add it to CHANGES.rst
+  # intentionally empy line before Version. necessary to have a empty line after =======
+  cat > /tmp/release-notes.txt <<EOF
+
+Version $tag_name (release ${current_date})
+
+$text
+
+EOF
+
+  # add release notes after =======
+  sed -i "/=======/r /tmp/release-notes.txt" CHANGES.rst
+
+  # check sed syntax to understand that completly
+  upstream_default="upstream/$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')"
+
+  # create branch with new tag name
+  release_branch_name="rel-${tag_name//./-}"
+  git checkout -b $release_branch_name $upstream_default
+
+  # update __version__ with the new tag
+  local_pwd=$(pwd)
+  source_dir=${local_pwd##*/}
+  target_dir=${source_dir//-/_}
+  init_file="$target_dir/__init__.py"
+
+  if [[ ! -f $init_file ]]
+  then
+    echo "__init__.py does not exists"
+    exit
+  fi
+
+  sed -i "s/^__version__.*/__version__ = \"${tag_name:1}\"/" $init_file
+
+  # commit
+  git commit -am "release $tag_name"
+
+  # push branch
+  git push -u origin $release_branch_name
+
+  # create pr
+  gh pr create --fill
+
+  if [[ $(echo "$(gh pr checks)" | grep -c "fail") -ne 0 ]]
+  then
+    echo "there are failed tests"
+    return
+  fi
+
+  # rebase pr
+  gh pr merge --admin --rebase --delete-branch
+
+  # create release
+  gh release create $tag_name --generate-notes --title "Release $tag_name"
+}
 
 # example venv
 # example venv env
