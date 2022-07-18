@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Graz University of Technology.
+# Copyright (C) 2021-2022 Graz University of Technology.
 
 # Search strings in files like
 # fxgrep py RecordService
@@ -14,18 +14,19 @@
 # default is to search case insensitive, but sometimes it is easier to search
 # case sensitive. the search string has to be prefixed with "i:"
 # fxgrep py i:Owner
+#
+# FXGREP_EXCLUDE_PACKAGES = list of files/dirs which should be excluded automatically
+# FXGREP_EXPLICIT_PACKAGES = list of files/dirs which shold be explicitly searched in
+# above variables should be stored in a .fxgrep.conf file. this file
+# could be placed everywhere. this file is searched in the parent
+# directories of the current directory. the first found is used
 function fxgrep() {
   xagr="xargs grep -n -P --color=always"
   notpaths=()
+  paths=()
   space=$1
   pattern=$2
-  interactive=false
-
-  if [[ ${space:0:2} == "i:" ]]
-  then
-    space=${space:2}
-    interactive=true
-  fi
+  interactive=true
 
   if [[ ${pattern:0:2} == "i:" ]]
   then
@@ -38,15 +39,59 @@ function fxgrep() {
     pattern="${pattern:2}\s="
   elif [[ ${pattern:0:3} == "nc:" ]]
   then
-    pattern="^(?=[\s]*+[^#])[^#]*(${pattern:0:3})"
+    # \K keep left, only the pattern will be highlighted
+    # (?=) positive lookahead
+    # (?!) negative lookahead
+    pattern="^(?=[\s]*[^#])(?![\s]*\"\"\")(?![\s]*>>>)(?![\s]*\.\.\.)[^#]*\K(${pattern:3})"
   else
     xagr+=" -i"
   fi
 
-  for (( i=3; i <= $#; i++ ))
-  do
-    notpaths+=( -not -path "*${!i}*")
-  done
+  if [[ ${space:0:2} == "i:" ]]
+  then
+    interactive=true
+    space=${space:2}
+  elif [[ ${space:0:2} == "c:" ]]
+  then
+    space=${space:2}
+
+    filename="$(pwd)/.fxgrep.conf"
+    while [[ ! -f $filename ]]
+    do
+      filename=$(sed -E "s|(.*)/.*/.fxgrep.conf|\1/.fxgrep.conf|" <<< $filename)
+    done
+
+    if [[ ! -f $filename ]]
+    then
+      echo "no configuration file with name '.fxgrep.conf' found"
+    fi
+
+    . $filename
+
+    for item in "${FXGREP_EXCLUDE_PACKAGES[@]}"
+    do
+      notpaths+=( -not -path "*${item}*" )
+    done
+
+    for item in "${FXGREP_EXPLICIT_PACKAGES[@]}"
+    do
+      paths+=( "*${item}*" )
+    done
+  fi
+
+  if [[ $3 == "--not" ]]
+  then
+    for (( i=4; i <= $#; i++ ))
+    do
+      notpaths+=( -not -path "*${!i}*")
+    done
+  elif [[ $3 == "--explicit" ]]
+  then
+    for (( i=4; i <= $#; i++ ))
+    do
+      paths+=( "*${!i}*" )
+    done
+  fi
 
   if [[ ${space} == "c++" ]]
   then
@@ -75,7 +120,7 @@ function fxgrep() {
     file_extensions=".*${space}"
   fi
 
-  output=$(find -type f -regextype posix-egrep -regex ${file_extensions} "${notpaths[@]}" | sed 's/ /\\ /g' | $xagr ${pattern})
+  output=$(find -L ${paths[@]} -type f -regextype posix-egrep -regex ${file_extensions} "${notpaths[@]}" | sed 's/ /\\ /g' | $xagr ${pattern})
   readarray -t files <<< $output
 
   if $interactive
@@ -84,12 +129,12 @@ function fxgrep() {
     base=$(pwd)
     prompt="Enter line number to open file: "
 
-    for i in "${!files[@]}";
+    for i in "${!files[@]}"
     do
       printf "%${#size}s: %s\n" "$i" "${files[$i]}"
     done
 
-    while read -p "$prompt" file_number && [[ "$file_number" != "q" ]]
+    while read -p "$prompt" file_number && [[ "${file_number}" != "q" ]]
     do
       uncolored_line=$(echo ${files[$file_number]} | sed -E 's/\x1b\[[0-9;]*[mK]//g')
       line_number=$(echo ${uncolored_line} | sed -E "s/.*?:([0-9]+):.*/\1/g")
@@ -100,6 +145,7 @@ function fxgrep() {
   else
     printf "%s\n" "${files[@]}"
   fi
+
 }
 
 
