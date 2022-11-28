@@ -67,9 +67,10 @@ function release() {
 
   git remote update
 
+  # show last tag name on the command line
+  git tag | sort -V | tail -n 10
 
-  # show last tag name
-  git tag | tail -n 10
+  # calculate latest tag
   latest_tag=$(git describe --abbrev=0 --tags)
 
   # choose new tag name
@@ -95,6 +96,26 @@ function release() {
     fi
   done
 
+  # check sed syntax to understand that completly
+  upstream_default="upstream/$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')"
+
+  # create branch with new tag name
+  # NOTE: doing this before of calculating the CHANGES ensures that HEAD is on the offical newest state
+  release_branch_name="rel-${tag_name//./-}"
+  git checkout -b $release_branch_name $upstream_default
+
+  # calculate init filename
+  local_pwd=$(pwd)
+  source_dir=${local_pwd##*/}
+  target_dir=${source_dir//-/_}
+  init_file="$target_dir/__init__.py"
+
+  if [[ ! -f $init_file ]]
+  then
+    echo "__init__.py does not exists"
+    exit
+  fi
+
   # get changes from last tag until now
   # https://gist.github.com/gzagatti/3bf037d397e6e47e47e81b7fc8293fd4
   text=$(git log --pretty=format:%s $latest_tag..HEAD | # get logs from last tag
@@ -102,7 +123,6 @@ function release() {
            sed -n '$!N; /^\(.*\)\n\1$/!P; D' | # remove duplicate lines
            sed 's/.*/- &/' # add prefix dash to indicate that the result is a list
       )
-
 
   current_date=$(printf '%(%Y-%m-%d)T\n' -1)
 
@@ -119,25 +139,7 @@ EOF
   # add release notes after =======
   sed -i "/=======/r /tmp/release-notes.txt" CHANGES.rst
 
-  # check sed syntax to understand that completly
-  upstream_default="upstream/$(git remote show upstream | sed -n '/HEAD branch/s/.*: //p')"
-
-  # create branch with new tag name
-  release_branch_name="rel-${tag_name//./-}"
-  git checkout -b $release_branch_name $upstream_default
-
   # update __version__ with the new tag
-  local_pwd=$(pwd)
-  source_dir=${local_pwd##*/}
-  target_dir=${source_dir//-/_}
-  init_file="$target_dir/__init__.py"
-
-  if [[ ! -f $init_file ]]
-  then
-    echo "__init__.py does not exists"
-    exit
-  fi
-
   sed -i "s/^__version__.*/__version__ = \"${tag_name:1}\"/" $init_file
 
   # commit
