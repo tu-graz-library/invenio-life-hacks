@@ -3,6 +3,7 @@
 export PIPENV_VERBOSITY=-1
 export FLASK_ENV=development
 export NPM_CONFIG_PREFIX=~/.npm/global
+export NPM_PACKAGE_FILE="package.json"
 
 export PATH_TO_LOCAL_GITHUB_CODE=
 export GIT_URL_TO_INSTITUTIONAL_REPOSITORY_CODE=
@@ -104,16 +105,22 @@ function release() {
   release_branch_name="rel-${tag_name//./-}"
   git checkout -b $release_branch_name $upstream_default
 
-  # calculate init filename
-  local_pwd=$(pwd)
-  source_dir=${local_pwd##*/}
-  target_dir=${source_dir//-/_}
-  init_file="$target_dir/__init__.py"
-
-  if [[ ! -f $init_file ]]
+  # check if npm packages
+  if [[ -f $NPM_PACKAGE_FILE ]]
   then
-    echo "__init__.py does not exists"
-    exit
+    init_file=$NPM_PACKAGE_FILE
+  else
+    # calculate init filename
+    local_pwd=$(pwd)
+    source_dir=${local_pwd##*/}
+    target_dir=${source_dir//-/_}
+    init_file="$target_dir/__init__.py"
+
+    if [[ ! -f $init_file ]]
+    then
+      echo "__init__.py does not exists"
+      exit
+    fi
   fi
 
   # get changes from last tag until now
@@ -137,10 +144,16 @@ $text
 EOF
 
   # add release notes after =======
-  sed -i "/=======/r /tmp/release-notes.txt" CHANGES.rst
+  rel_file=$(find . -maxdepth 1 -type f  -name "CHANGES.*")
+  sed -i "/=======/r /tmp/release-notes.txt" $rel_file
 
-  # update __version__ with the new tag
-  sed -i "s/^__version__.*/__version__ = \"${tag_name:1}\"/" $init_file
+  if [[ -f $NPM_PACKAGE_FILE ]]
+  then
+    sed -i "s/^.*\"version\".*/\t\"version\": \"${tag_name:1}\",/" $init_file
+  else
+    # update __version__ with the new tag
+    sed -i "s/^__version__.*/__version__ = \"${tag_name:1}\"/" $init_file
+  fi 
 
   # commit
   git commit -am "release $tag_name"
@@ -163,6 +176,7 @@ EOF
   # create release
   gh release create $tag_name --generate-notes --title "Release $tag_name"
 }
+
 
 # example venv
 # example venv env
