@@ -66,13 +66,20 @@ function release() {
     return
   fi
 
+  if [[ -f $NPM_PACKAGE_FILE ]]
+  then
+    is_npm_package=true
+  else
+    is_npm_package=false
+  fi
+
   git remote update
 
   # show last tag name on the command line
   git tag | sort -V | tail -n 10
 
   # calculate latest tag
-  latest_tag=$(git describe --abbrev=0 --tags)
+  latest_tag=$(git describe --abbrev=0 --tags $(git rev-list --tags --max-count=1))
 
   # choose new tag name
   while true
@@ -88,11 +95,13 @@ function release() {
       if [[ !  "$tag_name" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
       then
         echo "the style v[0-9]+\.[0-9]+\.[0-9] of $tag_name is  not correct please redo."
+        return
       fi
 
       if [[ "$tag_name" < "$latest_tag" ]]
       then
         echo "the tag has the right format, but it is lower then the latest existing tag"
+        return
       fi
     fi
   done
@@ -106,7 +115,7 @@ function release() {
   git checkout -b $release_branch_name $upstream_default
 
   # check if npm packages
-  if [[ -f $NPM_PACKAGE_FILE ]]
+  if [[ $is_npm_package = true ]]
   then
     init_file=$NPM_PACKAGE_FILE
   else
@@ -115,13 +124,14 @@ function release() {
     source_dir=${local_pwd##*/}
     target_dir=${source_dir//-/_}
     init_file="$target_dir/__init__.py"
-
-    if [[ ! -f $init_file ]]
-    then
-      echo "__init__.py does not exists"
-      exit
-    fi
   fi
+
+  if [[ ! -f $init_file ]]
+  then
+    echo "neither __init__.py nor package.json exists. Add according to npm or python."
+    return
+  fi
+
 
   # get changes from last tag until now
   # https://gist.github.com/gzagatti/3bf037d397e6e47e47e81b7fc8293fd4
@@ -133,9 +143,26 @@ function release() {
 
   current_date=$(printf '%(%Y-%m-%d)T\n' -1)
 
-  # add it to CHANGES.rst
+  # add release notes after =======
+  if [[ $is_npm_package = true ]]
+  then
+    CHANGES_FILE="CHANGES.md"
+  else
+    CHANGES_FILE="CHANGES.rst"
+  fi
+
+  TMP_RELEASE_NOTES="/tmp/release-notes.txt"
+
+  if [[ ! -f $CHANGES_FILE ]]
+  then
+    cat > $TMP_RELEASE_NOTES <<EOF
+Changes
+=======
+EOF
+  fi
+
   # intentionally empy line before Version. necessary to have a empty line after =======
-  cat > /tmp/release-notes.txt <<EOF
+  cat >> $TMP_RELEASE_NOTES <<EOF
 
 Version $tag_name (release ${current_date})
 
@@ -143,17 +170,20 @@ $text
 
 EOF
 
-  # add release notes after =======
-  rel_file=$(find . -maxdepth 1 -type f  -name "CHANGES.*")
-  sed -i "/=======/r /tmp/release-notes.txt" $rel_file
+  # add it to CHANGES.*
+  sed -i "/=======/r $TMP_RELEASE_NOTES" $CHANGES_FILE
 
-  if [[ -f $NPM_PACKAGE_FILE ]]
+  rm $TMP_RELEASE_NOTES
+
+  # update __version__ with the new tag
+  if [[ $is_npm_package = true ]]
   then
-    sed -i "s/^.*\"version\".*/\t\"version\": \"${tag_name:1}\",/" $init_file
+    sed_pattern='s/^.*"version".*/\t"version": "'${tag_name:1}'",/'
   else
-    # update __version__ with the new tag
-    sed -i "s/^__version__.*/__version__ = \"${tag_name:1}\"/" $init_file
-  fi 
+    sed_pattern='s/^__version__.*/__version__ = "'${tag_name:1}'"/'
+  fi
+
+  sed -i "$sed_pattern" $init_file
 
   # commit
   git commit -am "release $tag_name"
