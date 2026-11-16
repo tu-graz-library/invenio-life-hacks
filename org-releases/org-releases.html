@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latest releases of a GitHub organisation</title>
+<!--
+  Shows the latest GitHub release of every repository in an organisation.
+  - With a token: one GraphQL query (paginated), fast, works for private repos.
+  - Without a token: REST (list repos + /releases/latest per repo), public repos
+    only and limited to 60 requests/hour by GitHub.
+  The token is only sent to api.github.com and is never stored.
+  Everything (HTML, CSS, JS) lives in this one file; no dependencies.
+-->
+<style>
+  :root {
+    --bg: #fbfbf9; --fg: #1d2125; --muted: #66707a; --line: #dcdfe3;
+    --accent: #0b5cad; --warn: #9a4a00; --row: #f1f3f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191c; --fg: #e4e7ea; --muted: #939ca5; --line: #2c3238;
+      --accent: #6cb0f5; --warn: #f0a64a; --row: #1d2125;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 1.5rem 1rem 3rem; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, sans-serif;
+  }
+  main { max-width: 56rem; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+  form, .filters { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; margin-bottom: 1rem; }
+  label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); }
+  label.inline { flex-direction: row; align-items: center; gap: .4rem; }
+  input, select, button {
+    font: inherit; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 4px; padding: .4rem .6rem;
+  }
+  button { background: var(--accent); color: var(--bg); border-color: var(--accent); cursor: pointer; }
+  button:disabled { opacity: .5; cursor: progress; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #status { min-height: 1.5rem; color: var(--muted); }
+  #status.error { color: var(--warn); }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th button {
+    background: none; border: 0; padding: 0; color: inherit;
+    font-weight: 600; cursor: pointer;
+  }
+  th[aria-sort="ascending"] button::after { content: " ▲"; font-size: .75em; }
+  th[aria-sort="descending"] button::after { content: " ▼"; font-size: .75em; }
+  tbody tr:nth-child(even) { background: var(--row); }
+  a { color: var(--accent); }
+  .tag { font-variant-numeric: tabular-nums; }
+  .none { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Latest releases of an organisation</h1>
+
+  <form id="form">
+    <label>Organisation
+      <input id="org" required placeholder="e.g. my-org" autocomplete="off">
+    </label>
+    <label>Token (optional, recommended)
+      <input id="token" type="password" placeholder="ghp_… or github_pat_…" autocomplete="off">
+    </label>
+    <button id="go" type="submit">Load releases</button>
+  </form>
+
+  <div class="filters" id="filters" hidden>
+    <label>Filter
+      <input id="q" type="search" placeholder="repository name">
+    </label>
+    <label class="inline"><input id="hideNone" type="checkbox"> hide repos without release</label>
+    <label class="inline"><input id="hideArchived" type="checkbox"> hide archived</label>
+  </div>
+
+  <p id="status" role="status"></p>
+
+  <div class="scroll">
+    <table id="table" hidden>
+      <thead><tr>
+        <th data-key="name" aria-sort="none"><button type="button">Repository</button></th>
+        <th data-key="tag" aria-sort="none"><button type="button">Latest release</button></th>
+        <th data-key="date" aria-sort="none"><button type="button">Published</button></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+let repos = []; // [{name, url, archived, tag, tagUrl, date}]
+let sortKey = "name"; // "name" | "tag" | "date"
+let sortDir = 1;      // 1 = ascending, -1 = descending
+
+/** Fetch via GraphQL (needs token). Returns the normalised repo list. */
+async function loadGraphQL(org, token) {
+  const query = `query($org: String!, $cursor: String) {
+    organization(login: $org) {
+      repositories(first: 100, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
+        pageInfo { hasNextPage endCursor }
+        nodes { name url isArchived latestRelease { tagName url publishedAt } }
+      }
+    }
+  }`;
+  const out = [];
+  let cursor = null;
+  do {
+    const res = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables: { org, cursor } }),
+    });
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}. Check the token.`);
+    const json = await res.json();
+    if (json.errors) throw new Error(json.errors.map((e) => e.message).join("; "));
+    const page = json.data.organization.repositories;
+    for (const r of page.nodes) {
+      out.push({
+        name: r.name, url: r.url, archived: r.isArchived,
+        tag: r.latestRelease?.tagName ?? null,
+        tagUrl: r.latestRelease?.url ?? null,
+        date: r.latestRelease?.publishedAt ?? null,
+      });
+    }
+    cursor = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+    $("status").textContent = `Loaded ${out.length} repositories…`;
+  } while (cursor);
+  return out;
+}
+
+/** Fetch via REST without a token: list repos, then ask each for /releases/latest. */
+async function loadREST(org) {
+  const base = "https://api.github.com";
+  const list = [];
+  for (let page = 1; ; page++) {
+    const res = await fetch(`${base}/orgs/${org}/repos?per_page=100&page=${page}`);
+    if (res.status === 404) throw new Error("Organisation not found (or private: use a token).");
+    if (res.status === 403) throw new Error("Rate limit reached. Use a token or wait an hour.");
+    if (!res.ok) throw new Error(`GitHub answered ${res.status}.`);
+    const batch = await res.json();
+    list.push(...batch);
+    if (batch.length < 100) break;
+  }
+  const out = [];
+  for (const r of list) {
+    $("status").textContent = `Checking releases… ${out.length}/${list.length}`;
+    const res = await fetch(`${base}/repos/${org}/${r.name}/releases/latest`);
+    if (res.status === 403) throw new Error("Rate limit reached. Use a token or wait an hour.");
+    const rel = res.ok ? await res.json() : null; // 404 = no release
+    out.push({
+      name: r.name, url: r.html_url, archived: r.archived,
+      tag: rel?.tag_name ?? null, tagUrl: rel?.html_url ?? null, date: rel?.published_at ?? null,
+    });
+  }
+  return out;
+}
+
+/** Create an element with text content (avoids HTML injection). */
+function el(tag, text, attrs = {}) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+
+function link(text, href) {
+  return el("a", text, { href, target: "_blank", rel: "noopener" });
+}
+
+/** Re-render the table from `repos`, applying filter, sort and checkboxes. */
+function render() {
+  const q = $("q").value.trim().toLowerCase();
+  let view = repos.filter((r) =>
+    r.name.toLowerCase().includes(q) &&
+    !($("hideNone").checked && !r.tag) &&
+    !($("hideArchived").checked && r.archived));
+
+  // Repos without a value in the sorted column always go last.
+  const compare = {
+    name: (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }),
+    tag: (a, b) => a.tag.localeCompare(b.tag, undefined, { numeric: true }),
+    date: (a, b) => a.date.localeCompare(b.date),
+  }[sortKey];
+  view.sort((a, b) => {
+    const missingA = !a[sortKey], missingB = !b[sortKey];
+    if (missingA || missingB) return (missingA - missingB) || a.name.localeCompare(b.name);
+    return compare(a, b) * sortDir;
+  });
+
+  for (const th of document.querySelectorAll("th[data-key]")) {
+    th.setAttribute("aria-sort",
+      th.dataset.key !== sortKey ? "none" : sortDir === 1 ? "ascending" : "descending");
+  }
+
+  const rows = $("rows");
+  rows.replaceChildren();
+  for (const r of view) {
+    const tr = el("tr");
+    const name = el("td");
+    name.append(link(r.name, r.url));
+    if (r.archived) name.append(el("span", " (archived)", { class: "none" }));
+    const tag = el("td", null, { class: "tag" });
+    if (r.tag) tag.append(link(r.tag, r.tagUrl)); else tag.append(el("span", "no release", { class: "none" }));
+    const date = el("td", r.date ? new Date(r.date).toLocaleDateString() : "");
+    tr.append(name, tag, date);
+    rows.append(tr);
+  }
+  $("table").hidden = false;
+  $("status").className = "";
+  $("status").textContent = `${view.length} of ${repos.length} repositories shown.`;
+}
+
+$("form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const org = $("org").value.trim();
+  const token = $("token").value.trim();
+  $("go").disabled = true;
+  $("status").className = "";
+  $("status").textContent = "Loading…";
+  try {
+    repos = token ? await loadGraphQL(org, token) : await loadREST(org);
+    $("filters").hidden = false;
+    render();
+  } catch (err) {
+    $("status").className = "error";
+    $("status").textContent = err.message;
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+for (const id of ["q", "hideNone", "hideArchived"]) {
+  $(id).addEventListener("input", render);
+}
+
+// Click a column header to sort by it; click again to reverse the order.
+// Dates start with the newest release first, other columns start ascending.
+for (const th of document.querySelectorAll("th[data-key]")) {
+  th.querySelector("button").addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (key === sortKey) {
+      sortDir = -sortDir;
+    } else {
+      sortKey = key;
+      sortDir = key === "date" ? -1 : 1;
+    }
+    render();
+  });
+}
+</script>
+</body>
+</html>
